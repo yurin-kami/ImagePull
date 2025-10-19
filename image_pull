@@ -26,14 +26,15 @@ handle_error() {
 	echo "error: $1" >&2
 	echo "adding new image to registry"
 	cd "./docker_image_pusher/"
-	echo "$IMAGE" >>./images.txt
+	set +e
+	git pull
+	echo "docker.io/$IMAGE" >>./images.txt
 	grep -Ev "#|$" "./images.txt"
-	if git diff --quiet; then
-		echo "没有检测到文件更改，跳过提交和推送"
-	else
+	echo "已添加镜像: $IMAGE 到 images.txt"
+	if ! git diff --quiet; then
 		echo "检测到文件更改，提交更改并推送"
 
-		# 配置Git用户信息
+		# 配置 Git 用户信息
 		git config user.name "yurin-kami"
 		git config user.email "2063294262@qq.com"
 
@@ -41,13 +42,18 @@ handle_error() {
 		git add images.txt
 
 		# 提交更改
-		git commit -m "Update latest image: $IMAGE"
+		git commit -m "Add new image: $IMAGE" || echo "警告: git commit 失败"
 
-		# 推送到远程仓库
+		# 推送到远程仓库（不导致脚本退出）
 		echo "正在推送更改到GitHub..."
-		git push origin master
-		echo "add image sucess and wait a minite for github action"
+		git push origin main || echo "警告: git push 失败"
+		echo -e "\033[31madd image success and wait a minute for GitHub action!!!!!\033[0m"
+	else
+		echo "没有检测到文件更改，跳过提交和推送"
 	fi
+	cd ..
+	set -e
+	exit 0
 }
 
 while getopts "c:i:h" opt; do
