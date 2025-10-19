@@ -1,0 +1,3 @@
+[submodule "docker_image_pusher"]
+	path = docker_image_pusher
+	url = https://github.com/yurin-kami/docker_image_pusher.git

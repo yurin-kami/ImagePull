@@ -22,30 +22,32 @@ show_help() {
 }
 
 handle_error() {
-  local error_msg="error: $1"
-  echo "error: $1" >&2
-  echo "adding new image to registry"
-  cd "./docker_image_pusher/"
-  echo "$IMAGE" >> ./images.txt
-  grep -Ev "#|$" "./images.txt"
-  if git diff --quiet; then
-    echo "没有检测到文件更改，跳过提交和推送"
-else
-    echo "检测到文件更改，提交更改并推送"
-    
-    # 配置Git用户信息
-    git config user.name "yurin-kami"
-    git config user.email "2063294262@qq.com"
-    
-    # 添加更改
-    git add images.txt
-    
-    # 提交更改
-    git commit -m "Update latest image: $IMAGE"
-    
-    # 推送到远程仓库
-    echo "正在推送更改到GitHub..."
-    git push origin master
+	local error_msg="error: $1"
+	echo "error: $1" >&2
+	echo "adding new image to registry"
+	cd "./docker_image_pusher/"
+	echo "$IMAGE" >>./images.txt
+	grep -Ev "#|$" "./images.txt"
+	if git diff --quiet; then
+		echo "没有检测到文件更改，跳过提交和推送"
+	else
+		echo "检测到文件更改，提交更改并推送"
+
+		# 配置Git用户信息
+		git config user.name "yurin-kami"
+		git config user.email "2063294262@qq.com"
+
+		# 添加更改
+		git add images.txt
+
+		# 提交更改
+		git commit -m "Update latest image: $IMAGE"
+
+		# 推送到远程仓库
+		echo "正在推送更改到GitHub..."
+		git push origin master
+		echo "add image sucess and wait a minite for github action"
+	fi
 }
 
 while getopts "c:i:h" opt; do
@@ -95,24 +97,24 @@ echo "拉取镜像: $IMAGE"
 case "$RUNTIME" in
 docker)
 	docker login -u "$aliyun_username" -p "$aliyun_password" "$aliyun_registry"
-	docker pull "$aliyun_registry/$aliyun_namespace/$IMAGE"
+	docker pull "$aliyun_registry/$aliyun_namespace/$IMAGE" || handle_error "not found the image in aliyun registry,adding..."
 	docker tag "$aliyun_registry/$aliyun_namespace/$IMAGE" "docker.io/library/$IMAGE"
 	docker rmi "$aliyun_registry/$aliyun_namespace/$IMAGE"
 	;;
 ctr)
-	ctr i pull -u"$aliyun_username:$aliyun_password" "$aliyun_registry/$aliyun_namespace/$IMAGE"
+	ctr i pull -u"$aliyun_username:$aliyun_password" "$aliyun_registry/$aliyun_namespace/$IMAGE" || handle_error "not found the image in aliyun registry,adding..."
 	ctr i tag "$aliyun_registry/$aliyun_namespace/$IMAGE" "docker.io/library/$IMAGE"
 	ctr rm "$aliyun_registry/$aliyun_namespace/$IMAGE"
 	;;
 nerdctl)
 	nerdctl login -u "$aliyun_username" -p "$aliyun_password" "$aliyun_registry"
-	nerdctl pull "$aliyun_registry/$aliyun_namespace/$IMAGE"
+	nerdctl pull "$aliyun_registry/$aliyun_namespace/$IMAGE" || handle_error "not found the image in aliyun registry,adding..."
 	nerdctl tag "$aliyun_registry/$aliyun_namespace/$IMAGE" "docker.io/library/$IMAGE"
 	nerdctl rmi "$aliyun_registry/$aliyun_namespace/$IMAGE"
 	;;
 podman)
 	podman login -u "$aliyun_username" -p "$aliyun_password" "$aliyun_registry"
-	podman pull "$aliyun_registry/$aliyun_namespace/$IMAGE"
+	podman pull "$aliyun_registry/$aliyun_namespace/$IMAGE" || handle_error "not found the image in aliyun registry,adding..."
 	podman tag "$aliyun_registry/$aliyun_namespace/$IMAGE" "docker.io/library/$IMAGE"
 	podman rmi "$aliyun_registry/$aliyun_namespace/$IMAGE"
 	;;
