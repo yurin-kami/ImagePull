@@ -1,0 +1,119 @@
+#!/bin/bash
+
+set -e
+
+# 默认容器运行时
+RUNTIME="docker"
+
+# 显示帮助信息
+show_help() {
+	echo "Usage: image_pull [options] <image_name:tag>"
+	echo ""
+	echo "Options:"
+	echo "  -c, --runtime  指定容器运行时 (docker, ctr, nerdctl, podman) [默认: docker]"
+	echo "  -i, --image    指定镜像名称和标签 (可选，可直接使用位置参数)"
+	echo "  -h, --help     显示此帮助信息"
+	echo ""
+	echo "Examples:"
+	echo "  image_pull nginx:latest          # 使用默认 docker 运行时"
+	echo "  image_pull -c podman nginx:latest"
+	echo "  image_pull -i nginx:latest"
+	echo "  image_pull -c ctr -i nginx:latest"
+}
+
+handle_error() {
+  local error_msg="error: $1"
+  echo "error: $1" >&2
+  echo "adding new image to registry"
+  cd "./docker_image_pusher/"
+  echo "$IMAGE" >> ./images.txt
+  grep -Ev "#|$" "./images.txt"
+  if git diff --quiet; then
+    echo "没有检测到文件更改，跳过提交和推送"
+else
+    echo "检测到文件更改，提交更改并推送"
+    
+    # 配置Git用户信息
+    git config user.name "yurin-kami"
+    git config user.email "2063294262@qq.com"
+    
+    # 添加更改
+    git add images.txt
+    
+    # 提交更改
+    git commit -m "Update latest image: $IMAGE"
+    
+    # 推送到远程仓库
+    echo "正在推送更改到GitHub..."
+    git push origin master
+}
+
+while getopts "c:i:h" opt; do
+	case $opt in
+	c)
+		RUNTIME="$OPTARG"
+		case "$RUNTIME" in
+		docker | ctr | nerdctl | podman) ;;
+		*)
+			echo "错误: 无效的运行时 '$RUNTIME'. 有效选项: docker, ctr, nerdctl, podman"
+			exit 1
+			;;
+		esac
+		;;
+	i)
+		IMAGE="$OPTARG"
+		;;
+	h)
+		show_help
+		exit 0
+		;;
+	\?)
+		echo "错误: 无效的选项 '$OPTARG'. 使用 -h 查看帮助"
+		exit 1
+		;;
+	esac
+done
+
+#if arg "i" is not used
+if [ -z "$IMAGE" ] && [ $# -gt 0 ]; then
+	IMAGE="$1"
+fi
+
+#check image arg
+if [ -z "$IMAGE" ]; then
+	echo "错误: 镜像名称和标签是必需的 (e.g., nginx:latest)"
+	echo "使用 -i 或直接提供位置参数"
+	show_help
+	exit 1
+fi
+
+#print the full info
+echo "使用运行时: $RUNTIME"
+echo "拉取镜像: $IMAGE"
+
+#work start
+case "$RUNTIME" in
+docker)
+	docker login -u "$aliyun_username" -p "$aliyun_password" "$aliyun_registry"
+	docker pull "$aliyun_registry/$aliyun_namespace/$IMAGE"
+	docker tag "$aliyun_registry/$aliyun_namespace/$IMAGE" "docker.io/library/$IMAGE"
+	docker rmi "$aliyun_registry/$aliyun_namespace/$IMAGE"
+	;;
+ctr)
+	ctr i pull -u"$aliyun_username:$aliyun_password" "$aliyun_registry/$aliyun_namespace/$IMAGE"
+	ctr i tag "$aliyun_registry/$aliyun_namespace/$IMAGE" "docker.io/library/$IMAGE"
+	ctr rm "$aliyun_registry/$aliyun_namespace/$IMAGE"
+	;;
+nerdctl)
+	nerdctl login -u "$aliyun_username" -p "$aliyun_password" "$aliyun_registry"
+	nerdctl pull "$aliyun_registry/$aliyun_namespace/$IMAGE"
+	nerdctl tag "$aliyun_registry/$aliyun_namespace/$IMAGE" "docker.io/library/$IMAGE"
+	nerdctl rmi "$aliyun_registry/$aliyun_namespace/$IMAGE"
+	;;
+podman)
+	podman login -u "$aliyun_username" -p "$aliyun_password" "$aliyun_registry"
+	podman pull "$aliyun_registry/$aliyun_namespace/$IMAGE"
+	podman tag "$aliyun_registry/$aliyun_namespace/$IMAGE" "docker.io/library/$IMAGE"
+	podman rmi "$aliyun_registry/$aliyun_namespace/$IMAGE"
+	;;
+esac
