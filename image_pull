@@ -35,8 +35,8 @@ handle_error() {
 		echo "检测到文件更改，提交更改并推送"
 
 		# 配置 Git 用户信息
-		git config user.name "yurin-kami"
-		git config user.email "2063294262@qq.com"
+		git config user.name "$GIT_USERNAME"
+		git config user.email "$GIT_EMAIL"
 
 		# 添加更改
 		git add images.txt
