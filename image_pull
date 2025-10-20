@@ -28,15 +28,13 @@ handle_error() {
 	cd "./docker_image_pusher/"
 	set +e
 	git pull
-	echo "docker.io/$IMAGE" >>./images.txt
+	if [ ! "$(tail -n 1 images.txt)" = "$IMAGE" ]; then
+		echo "$IMAGE" >./images.txt
+	fi
 	grep -Ev "#|$" "./images.txt"
 	echo "已添加镜像: $IMAGE 到 images.txt"
 	if ! git diff --quiet; then
 		echo "检测到文件更改，提交更改并推送"
-
-		# 配置 Git 用户信息
-		git config user.name "$GIT_USERNAME"
-		git config user.email "$GIT_EMAIL"
 
 		# 添加更改
 		git add images.txt
@@ -53,7 +51,25 @@ handle_error() {
 	fi
 	cd ..
 	set -e
-	exit 0
+
+	sleep 240
+
+	status_keyword=$(curl -L https://github.com/yurin-kami/docker_image_pusher/actions 2>/dev/null |
+		grep -A 1 "Add new image: $IMAGE" |
+		grep 'aria-label' |
+		sed -n 's/.*aria-label="\([^"]*\)".*/\1/p' |
+		head -1 | awk '{print$2}')
+
+	if [ "$status_keyword" = "successfully:" ]; then
+		echo "✅ 成功: $IMAGE 状态为 '$status_keyword'"
+		image_puller
+	elif [ "$status_keyword" = "Run" ]; then
+		echo "❌ 失败: $IMAGE 状态为 'Failed' (详细: $status_keyword)"
+		return 1
+	else
+		echo "⚠️ 未知状态: $IMAGE (状态: $status_keyword, 详细: $status_keyword)"
+		return 1
+	fi
 }
 
 while getopts "c:i:h" opt; do
@@ -98,30 +114,38 @@ fi
 #print the full info
 echo "使用运行时: $RUNTIME"
 echo "拉取镜像: $IMAGE"
+IMAGE_BASE=${IMAGE%%:*}
+repo=${IMAGE_BASE%/*}
+image_name_base=${IMAGE_BASE##*/}
+image_name="${image_name_base}:${IMAGE##*:}"
 
 #work start
-case "$RUNTIME" in
-docker)
-	docker login -u "$aliyun_username" -p "$aliyun_password" "$aliyun_registry"
-	docker pull "$aliyun_registry/$aliyun_namespace/$IMAGE" || handle_error "not found the image in aliyun registry,adding..."
-	docker tag "$aliyun_registry/$aliyun_namespace/$IMAGE" "docker.io/library/$IMAGE"
-	docker rmi "$aliyun_registry/$aliyun_namespace/$IMAGE"
-	;;
-ctr)
-	ctr i pull -u"$aliyun_username:$aliyun_password" "$aliyun_registry/$aliyun_namespace/$IMAGE" || handle_error "not found the image in aliyun registry,adding..."
-	ctr i tag "$aliyun_registry/$aliyun_namespace/$IMAGE" "docker.io/library/$IMAGE"
-	ctr rm "$aliyun_registry/$aliyun_namespace/$IMAGE"
-	;;
-nerdctl)
-	nerdctl login -u "$aliyun_username" -p "$aliyun_password" "$aliyun_registry"
-	nerdctl pull "$aliyun_registry/$aliyun_namespace/$IMAGE" || handle_error "not found the image in aliyun registry,adding..."
-	nerdctl tag "$aliyun_registry/$aliyun_namespace/$IMAGE" "docker.io/library/$IMAGE"
-	nerdctl rmi "$aliyun_registry/$aliyun_namespace/$IMAGE"
-	;;
-podman)
-	podman login -u "$aliyun_username" -p "$aliyun_password" "$aliyun_registry"
-	podman pull "$aliyun_registry/$aliyun_namespace/$IMAGE" || handle_error "not found the image in aliyun registry,adding..."
-	podman tag "$aliyun_registry/$aliyun_namespace/$IMAGE" "docker.io/library/$IMAGE"
-	podman rmi "$aliyun_registry/$aliyun_namespace/$IMAGE"
-	;;
-esac
+image_puller() {
+	case "$RUNTIME" in
+	docker)
+		docker login -u "$aliyun_username" -p "$aliyun_password" "$aliyun_registry"
+		docker pull "$aliyun_registry/$aliyun_namespace/$image_name" || handle_error "not found the image in aliyun registry,adding..."
+		docker tag "$aliyun_registry/$aliyun_namespace/$image_name" "$IMAGE"
+		docker rmi "$aliyun_registry/$aliyun_namespace/$image_name"
+		;;
+	ctr)
+		ctr i pull -u"$aliyun_username:$aliyun_password" "$aliyun_registry/$aliyun_namespace/$image_name" || handle_error "not found the image in aliyun registry,adding..."
+		ctr i tag "$aliyun_registry/$aliyun_namespace/$image_name" "$IMAGE"
+		ctr rm "$aliyun_registry/$aliyun_namespace/$image_name"
+		;;
+	nerdctl)
+		nerdctl login -u "$aliyun_username" -p "$aliyun_password" "$aliyun_registry"
+		nerdctl pull "$aliyun_registry/$aliyun_namespace/$image_name" || handle_error "not found the image in aliyun registry,adding..."
+		nerdctl tag "$aliyun_registry/$aliyun_namespace/$image_name" "$IMAGE"
+		nerdctl rmi "$aliyun_registry/$aliyun_namespace/$image_name"
+		;;
+	podman)
+		podman login -u "$aliyun_username" -p "$aliyun_password" "$aliyun_registry"
+		podman pull "$aliyun_registry/$aliyun_namespace/$image_name" || handle_error "not found the image in aliyun registry,adding..."
+		podman tag "$aliyun_registry/$aliyun_namespace/$image_name" "$IMAGE"
+		podman rmi "$aliyun_registry/$aliyun_namespace/$image_name"
+		;;
+	esac
+}
+
+image_puller
